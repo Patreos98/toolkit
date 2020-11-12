@@ -1,3 +1,4 @@
+import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import * as core from '../src/core'
@@ -20,38 +21,85 @@ const testEnvVars = {
   INPUT_MULTIPLE_SPACES_VARIABLE: 'I have multiple spaces',
 
   // Save inputs
-  STATE_TEST_1: 'state_val'
+  STATE_TEST_1: 'state_val',
+
+  // File Commands
+  GITHUB_PATH: '',
+  GITHUB_ENV: ''
 }
 
 describe('@actions/core', () => {
-  beforeEach(() => {
-    for (const key in testEnvVars)
-      process.env[key] = testEnvVars[key as keyof typeof testEnvVars]
+  beforeAll(() => {
+    const filePath = path.join(__dirname, `test`)
+    if (!fs.existsSync(filePath)) {
+      fs.mkdirSync(filePath)
+    }
+  })
 
+  beforeEach(() => {
+    for (const key in testEnvVars) {
+      process.env[key] = testEnvVars[key as keyof typeof testEnvVars]
+    }
     process.stdout.write = jest.fn()
   })
 
-  afterEach(() => {
-    for (const key in testEnvVars) Reflect.deleteProperty(testEnvVars, key)
-  })
-
-  it('exportVariable produces the correct command and sets the env', () => {
+  it('legacy exportVariable produces the correct command and sets the env', () => {
     core.exportVariable('my var', 'var val')
     assertWriteCalls([`::set-env name=my var::var val${os.EOL}`])
   })
 
-  it('exportVariable escapes variable names', () => {
-    core.exportVariable('special char var \r\n];', 'special val')
-    expect(process.env['special char var \r\n];']).toBe('special val')
+  it('legacy exportVariable escapes variable names', () => {
+    core.exportVariable('special char var \r\n,:', 'special val')
+    expect(process.env['special char var \r\n,:']).toBe('special val')
     assertWriteCalls([
-      `::set-env name=special char var %0D%0A%5D%3B::special val${os.EOL}`
+      `::set-env name=special char var %0D%0A%2C%3A::special val${os.EOL}`
     ])
   })
 
-  it('exportVariable escapes variable values', () => {
+  it('legacy exportVariable escapes variable values', () => {
     core.exportVariable('my var2', 'var val\r\n')
     expect(process.env['my var2']).toBe('var val\r\n')
     assertWriteCalls([`::set-env name=my var2::var val%0D%0A${os.EOL}`])
+  })
+
+  it('legacy exportVariable handles boolean inputs', () => {
+    core.exportVariable('my var', true)
+    assertWriteCalls([`::set-env name=my var::true${os.EOL}`])
+  })
+
+  it('legacy exportVariable handles number inputs', () => {
+    core.exportVariable('my var', 5)
+    assertWriteCalls([`::set-env name=my var::5${os.EOL}`])
+  })
+
+  it('exportVariable produces the correct command and sets the env', () => {
+    const command = 'ENV'
+    createFileCommandFile(command)
+    core.exportVariable('my var', 'var val')
+    verifyFileCommand(
+      command,
+      `my var<<_GitHubActionsFileCommandDelimeter_${os.EOL}var val${os.EOL}_GitHubActionsFileCommandDelimeter_${os.EOL}`
+    )
+  })
+
+  it('exportVariable handles boolean inputs', () => {
+    const command = 'ENV'
+    createFileCommandFile(command)
+    core.exportVariable('my var', true)
+    verifyFileCommand(
+      command,
+      `my var<<_GitHubActionsFileCommandDelimeter_${os.EOL}true${os.EOL}_GitHubActionsFileCommandDelimeter_${os.EOL}`
+    )
+  })
+
+  it('exportVariable handles number inputs', () => {
+    const command = 'ENV'
+    createFileCommandFile(command)
+    core.exportVariable('my var', 5)
+    verifyFileCommand(
+      command,
+      `my var<<_GitHubActionsFileCommandDelimeter_${os.EOL}5${os.EOL}_GitHubActionsFileCommandDelimeter_${os.EOL}`
+    )
   })
 
   it('setSecret produces the correct command', () => {
@@ -60,6 +108,16 @@ describe('@actions/core', () => {
   })
 
   it('prependPath produces the correct commands and sets the env', () => {
+    const command = 'PATH'
+    createFileCommandFile(command)
+    core.addPath('myPath')
+    expect(process.env['PATH']).toBe(
+      `myPath${path.delimiter}path1${path.delimiter}path2`
+    )
+    verifyFileCommand(command, `myPath${os.EOL}`)
+  })
+
+  it('legacy prependPath produces the correct commands and sets the env', () => {
     core.addPath('myPath')
     expect(process.env['PATH']).toBe(
       `myPath${path.delimiter}path1${path.delimiter}path2`
@@ -104,16 +162,33 @@ describe('@actions/core', () => {
     assertWriteCalls([`::set-output name=some output::some value${os.EOL}`])
   })
 
-  it('setFailure sets the correct exit code and failure message', () => {
+  it('setOutput handles bools', () => {
+    core.setOutput('some output', false)
+    assertWriteCalls([`::set-output name=some output::false${os.EOL}`])
+  })
+
+  it('setOutput handles numbers', () => {
+    core.setOutput('some output', 1.01)
+    assertWriteCalls([`::set-output name=some output::1.01${os.EOL}`])
+  })
+
+  it('setFailed sets the correct exit code and failure message', () => {
     core.setFailed('Failure message')
     expect(process.exitCode).toBe(core.ExitCode.Failure)
     assertWriteCalls([`::error::Failure message${os.EOL}`])
   })
 
-  it('setFailure escapes the failure message', () => {
+  it('setFailed escapes the failure message', () => {
     core.setFailed('Failure \r\n\nmessage\r')
     expect(process.exitCode).toBe(core.ExitCode.Failure)
     assertWriteCalls([`::error::Failure %0D%0A%0Amessage%0D${os.EOL}`])
+  })
+
+  it('setFailed handles Error', () => {
+    const message = 'this is my error message'
+    core.setFailed(new Error(message))
+    expect(process.exitCode).toBe(core.ExitCode.Failure)
+    assertWriteCalls([`::error::Error: ${message}${os.EOL}`])
   })
 
   it('error sets the correct error message', () => {
@@ -126,6 +201,12 @@ describe('@actions/core', () => {
     assertWriteCalls([`::error::Error message%0D%0A%0A${os.EOL}`])
   })
 
+  it('error handles an error object', () => {
+    const message = 'this is my error message'
+    core.error(new Error(message))
+    assertWriteCalls([`::error::Error: ${message}${os.EOL}`])
+  })
+
   it('warning sets the correct message', () => {
     core.warning('Warning')
     assertWriteCalls([`::warning::Warning${os.EOL}`])
@@ -134,6 +215,12 @@ describe('@actions/core', () => {
   it('warning escapes the message', () => {
     core.warning('\r\nwarning\n')
     assertWriteCalls([`::warning::%0D%0Awarning%0A${os.EOL}`])
+  })
+
+  it('warning handles an error object', () => {
+    const message = 'this is my error message'
+    core.warning(new Error(message))
+    assertWriteCalls([`::warning::Error: ${message}${os.EOL}`])
   })
 
   it('startGroup starts a new group', () => {
@@ -174,8 +261,41 @@ describe('@actions/core', () => {
     assertWriteCalls([`::save-state name=state_1::some value${os.EOL}`])
   })
 
+  it('saveState handles numbers', () => {
+    core.saveState('state_1', 1)
+    assertWriteCalls([`::save-state name=state_1::1${os.EOL}`])
+  })
+
+  it('saveState handles bools', () => {
+    core.saveState('state_1', true)
+    assertWriteCalls([`::save-state name=state_1::true${os.EOL}`])
+  })
+
   it('getState gets wrapper action state', () => {
     expect(core.getState('TEST_1')).toBe('state_val')
+  })
+
+  it('isDebug check debug state', () => {
+    const current = process.env['RUNNER_DEBUG']
+    try {
+      delete process.env.RUNNER_DEBUG
+      expect(core.isDebug()).toBe(false)
+
+      process.env['RUNNER_DEBUG'] = '1'
+      expect(core.isDebug()).toBe(true)
+    } finally {
+      process.env['RUNNER_DEBUG'] = current
+    }
+  })
+
+  it('setCommandEcho can enable echoing', () => {
+    core.setCommandEcho(true)
+    assertWriteCalls([`::echo::on${os.EOL}`])
+  })
+
+  it('setCommandEcho can disable echoing', () => {
+    core.setCommandEcho(false)
+    assertWriteCalls([`::echo::off${os.EOL}`])
   })
 })
 
@@ -185,5 +305,23 @@ function assertWriteCalls(calls: string[]): void {
 
   for (let i = 0; i < calls.length; i++) {
     expect(process.stdout.write).toHaveBeenNthCalledWith(i + 1, calls[i])
+  }
+}
+
+function createFileCommandFile(command: string): void {
+  const filePath = path.join(__dirname, `test/${command}`)
+  process.env[`GITHUB_${command}`] = filePath
+  fs.appendFileSync(filePath, '', {
+    encoding: 'utf8'
+  })
+}
+
+function verifyFileCommand(command: string, expectedContents: string): void {
+  const filePath = path.join(__dirname, `test/${command}`)
+  const contents = fs.readFileSync(filePath, 'utf8')
+  try {
+    expect(contents).toEqual(expectedContents)
+  } finally {
+    fs.unlinkSync(filePath)
   }
 }

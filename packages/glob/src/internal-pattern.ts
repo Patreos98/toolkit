@@ -1,7 +1,7 @@
-import * as assert from 'assert'
 import * as os from 'os'
 import * as path from 'path'
 import * as pathHelper from './internal-path-helper'
+import assert from 'assert'
 import {Minimatch, IMinimatch, IOptions as IMinimatchOptions} from 'minimatch'
 import {MatchKind} from './internal-match-kind'
 import {Path} from './internal-path'
@@ -21,7 +21,7 @@ export class Pattern {
 
   /**
    * The path/pattern segments. Note, only the first segment (the root directory)
-   * may contain a directory separator charactor. Use the trailingSeparator field
+   * may contain a directory separator character. Use the trailingSeparator field
    * to determine whether the pattern ended with a trailing slash.
    */
   readonly segments: string[]
@@ -48,8 +48,13 @@ export class Pattern {
   // https://github.com/typescript-eslint/typescript-eslint/issues/291
 
   constructor(pattern: string)
+  constructor(pattern: string, segments: undefined, homedir: string)
   constructor(negate: boolean, segments: string[])
-  constructor(patternOrNegate: string | boolean, segments?: string[]) {
+  constructor(
+    patternOrNegate: string | boolean,
+    segments?: string[],
+    homedir?: string
+  ) {
     // Pattern overload
     let pattern: string
     if (typeof patternOrNegate === 'string') {
@@ -78,7 +83,7 @@ export class Pattern {
     }
 
     // Normalize slashes and ensures absolute root
-    pattern = Pattern.fixupPattern(pattern)
+    pattern = Pattern.fixupPattern(pattern, homedir)
 
     // Segments
     this.segments = new Path(pattern).segments
@@ -125,11 +130,11 @@ export class Pattern {
       itemPath = pathHelper.normalizeSeparators(itemPath)
 
       // Append a trailing slash. Otherwise Minimatch will not match the directory immediately
-      // preceeding the globstar. For example, given the pattern `/foo/**`, Minimatch returns
+      // preceding the globstar. For example, given the pattern `/foo/**`, Minimatch returns
       // false for `/foo` but returns true for `/foo/`. Append a trailing slash to handle that quirk.
       if (!itemPath.endsWith(path.sep)) {
         // Note, this is safe because the constructor ensures the pattern has an absolute root.
-        // For example, formats like C: and C:foo on Windows are resolved to an aboslute root.
+        // For example, formats like C: and C:foo on Windows are resolved to an absolute root.
         itemPath = `${itemPath}${path.sep}`
       }
     } else {
@@ -177,7 +182,7 @@ export class Pattern {
   /**
    * Normalizes slashes and ensures absolute root
    */
-  private static fixupPattern(pattern: string): string {
+  private static fixupPattern(pattern: string, homedir?: string): string {
     // Empty
     assert(pattern, 'pattern cannot be empty')
 
@@ -206,7 +211,7 @@ export class Pattern {
     }
     // Replace leading `~` segment
     else if (pattern === '~' || pattern.startsWith(`~${path.sep}`)) {
-      const homedir = os.homedir()
+      homedir = homedir || os.homedir()
       assert(homedir, 'Unable to determine HOME directory')
       assert(
         pathHelper.hasAbsoluteRoot(homedir),

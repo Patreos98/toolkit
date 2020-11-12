@@ -111,7 +111,19 @@ Registering two problem-matchers with the same owner will result in only the pro
 ## Examples
 
 Some of the starter actions are already using problem matchers, for example:
-- [setup-node](https://github.com/actions/setup-node/tree/master/.github)
-- [setup-python](https://github.com/actions/setup-python/tree/master/.github)
-- [setup-go](https://github.com/actions/setup-go/tree/master/.github)
-- [setup-dotnet](https://github.com/actions/setup-dotnet/tree/master/.github)
+- [setup-node](https://github.com/actions/setup-node/tree/main/.github)
+- [setup-python](https://github.com/actions/setup-python/tree/main/.github)
+- [setup-go](https://github.com/actions/setup-go/tree/main/.github)
+- [setup-dotnet](https://github.com/actions/setup-dotnet/tree/main/.github)
+
+## Troubleshooting
+
+### Regular expression not matching
+
+Use ECMAScript regular expression syntax when testing patterns.
+
+### File property getting dropped
+
+[Enable debug logging](https://help.github.com/en/actions/configuring-and-managing-workflows/managing-a-workflow-run#enabling-debug-logging) to determine why the file is getting dropped.
+
+This usually happens when the file does not exist or is not under the workflow repo.

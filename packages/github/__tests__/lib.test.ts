@@ -52,10 +52,10 @@ describe('@actions/context', () => {
     })
   })
 
-  it('works with pullRequest payloads', () => {
+  it('works with pull_request payloads', () => {
     delete process.env.GITHUB_REPOSITORY
     context.payload = {
-      pullRequest: {number: 2},
+      pull_request: {number: 2},
       repository: {owner: {login: 'user'}, name: 'test'}
     }
     expect(context.issue).toEqual({
